@@ -220,6 +220,14 @@ function facebookOAuthConfig() {
   };
 }
 
+function threadsOAuthConfig() {
+  return {
+    appId: process.env.THREADS_APP_ID || "",
+    appSecret: process.env.THREADS_APP_SECRET || "",
+    redirectUri: `${publicBaseUrl()}/api/threads/oauth/callback`
+  };
+}
+
 function threadsConfig() {
   return {
     userId: runtimeOrEnv(runtimeSocialSettings.threadsUserId, "THREADS_USER_ID"),
@@ -772,6 +780,51 @@ async function exchangeFacebookCode(code, redirectUri) {
   };
 }
 
+async function exchangeThreadsCode(code, redirectUri) {
+  const { appId, appSecret } = threadsOAuthConfig();
+  if (!appId || !appSecret) {
+    throw new Error("THREADS_APP_ID and THREADS_APP_SECRET are required for Threads OAuth.");
+  }
+
+  const shortParams = new URLSearchParams({
+    client_id: appId,
+    client_secret: appSecret,
+    grant_type: "authorization_code",
+    redirect_uri: redirectUri,
+    code
+  });
+
+  const shortResponse = await fetch("https://graph.threads.net/oauth/access_token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: shortParams
+  });
+  const shortToken = await shortResponse.json();
+  if (!shortResponse.ok || shortToken.error) {
+    const message = shortToken.error?.message || `Threads OAuth failed: ${shortResponse.status}`;
+    throw new Error(message);
+  }
+
+  const longUrl = new URL("https://graph.threads.net/access_token");
+  longUrl.searchParams.set("grant_type", "th_exchange_token");
+  longUrl.searchParams.set("client_secret", appSecret);
+  longUrl.searchParams.set("access_token", shortToken.access_token);
+
+  const longResponse = await fetch(longUrl);
+  const longToken = await longResponse.json();
+  if (!longResponse.ok || longToken.error) {
+    const message = longToken.error?.message || `Threads long-lived token exchange failed: ${longResponse.status}`;
+    throw new Error(message);
+  }
+
+  const profile = await threadsGet("me", { fields: "id,username" }, longToken.access_token);
+  return {
+    userId: String(profile.id || shortToken.user_id || ""),
+    username: String(profile.username || "Threads"),
+    accessToken: longToken.access_token
+  };
+}
+
 async function graphGet(path, fields, token) {
   const url = new URL(`https://graph.instagram.com/${graphVersion}/${path}`);
   url.searchParams.set("fields", fields);
@@ -1177,6 +1230,54 @@ async function handleApi(req, res) {
       });
 
       sendHtml(res, 200, `<main style="font-family:system-ui;padding:40px;line-height:1.5"><h1>Facebook 페이지 연결 완료</h1><p>${page.pageName} 페이지 토큰이 저장되었습니다. 카드뉴스 앱으로 돌아가도 됩니다.</p><p>페이지 ID: ${masked(page.pageId)}</p><p>찾은 페이지 수: ${page.pageCount}</p></main>`);
+      return;
+    }
+
+    if (req.method === "GET" && req.url === "/api/threads/oauth/start") {
+      const { appId, appSecret, redirectUri } = threadsOAuthConfig();
+      if (!publicBaseUrl()) {
+        sendJson(res, 400, { error: "PUBLIC_BASE_URL is required before starting Threads OAuth." });
+        return;
+      }
+      if (!appId || !appSecret) {
+        sendJson(res, 400, { error: "THREADS_APP_ID and THREADS_APP_SECRET are required before starting Threads OAuth." });
+        return;
+      }
+
+      const authUrl = new URL("https://threads.net/oauth/authorize");
+      authUrl.searchParams.set("client_id", appId);
+      authUrl.searchParams.set("redirect_uri", redirectUri);
+      authUrl.searchParams.set("response_type", "code");
+      authUrl.searchParams.set("scope", "threads_basic,threads_content_publish");
+
+      res.writeHead(302, { location: authUrl.toString(), "cache-control": "no-store" });
+      res.end();
+      return;
+    }
+
+    if (req.method === "GET" && req.url?.startsWith("/api/threads/oauth/callback")) {
+      const requestUrl = new URL(req.url, `http://${req.headers.host}`);
+      const code = requestUrl.searchParams.get("code");
+      const error = requestUrl.searchParams.get("error") || requestUrl.searchParams.get("error_reason");
+      if (error) {
+        sendHtml(res, 400, `<main style="font-family:system-ui;padding:40px"><h1>Threads connection failed</h1><p>${error}</p></main>`);
+        return;
+      }
+      if (!code) {
+        sendHtml(res, 400, `<main style="font-family:system-ui;padding:40px"><h1>Threads connection failed</h1><p>Authorization code is missing.</p></main>`);
+        return;
+      }
+
+      const { redirectUri } = threadsOAuthConfig();
+      const token = await exchangeThreadsCode(code, redirectUri);
+      runtimeSocialSettings.threadsUserId = token.userId;
+      runtimeSocialSettings.threadsAccessToken = token.accessToken;
+      await saveLocalEnv({
+        THREADS_USER_ID: token.userId,
+        THREADS_ACCESS_TOKEN: token.accessToken
+      });
+
+      sendHtml(res, 200, `<main style="font-family:system-ui;padding:40px;line-height:1.5"><h1>Threads connected</h1><p>${token.username} token has been saved. You can close this window and return to the card news app.</p><p>User ID: ${masked(token.userId)}</p></main>`);
       return;
     }
 
