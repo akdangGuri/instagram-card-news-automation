@@ -228,7 +228,7 @@ function facebookOAuthConfig() {
   return {
     appId: process.env.FB_APP_ID || "875028168403415",
     appSecret: process.env.FB_APP_SECRET || "",
-    redirectUri: process.env.FB_REDIRECT_URI || `${publicBaseUrl()}/api/facebook/oauth/callback`
+    redirectUri: `${publicBaseUrl()}/api/facebook/oauth/callback`
   };
 }
 
