@@ -867,14 +867,19 @@ async function exchangeThreadsCode(code, redirectUri) {
     throw new Error("THREADS_APP_ID and THREADS_APP_SECRET are required for Threads OAuth.");
   }
 
-  const shortUrl = new URL("https://graph.threads.net/oauth/access_token");
-  shortUrl.searchParams.set("client_id", appId);
-  shortUrl.searchParams.set("client_secret", appSecret);
-  shortUrl.searchParams.set("grant_type", "authorization_code");
-  shortUrl.searchParams.set("redirect_uri", redirectUri);
-  shortUrl.searchParams.set("code", code);
+  const shortParams = new URLSearchParams({
+    client_id: appId,
+    client_secret: appSecret,
+    grant_type: "authorization_code",
+    redirect_uri: redirectUri,
+    code
+  });
 
-  const shortResponse = await fetch(shortUrl, { method: "POST" });
+  const shortResponse = await fetch("https://graph.threads.net/oauth/access_token", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: shortParams
+  });
   const shortToken = await shortResponse.json();
   if (!shortResponse.ok || shortToken.error) {
     const message = shortToken.error?.message || `Threads OAuth failed: ${shortResponse.status}`;
@@ -904,9 +909,9 @@ async function exchangeThreadsCode(code, redirectUri) {
 async function graphGet(path, fields, token) {
   const url = new URL(`https://graph.instagram.com/${graphVersion}/${path}`);
   url.searchParams.set("fields", fields);
-  const response = await fetch(url, {
-    headers: { authorization: `Bearer ${token}` }
-  });
+  url.searchParams.set("access_token", token);
+
+  const response = await fetch(url);
   const data = await response.json();
   if (!response.ok || data.error) {
     const message = data.error?.message || `Graph API request failed: ${response.status}`;
