@@ -1335,9 +1335,7 @@ async function handleApi(req, res) {
       authUrl.searchParams.set("redirect_uri", redirectUri);
       authUrl.searchParams.set("response_type", "code");
       authUrl.searchParams.set("scope", "threads_basic,threads_content_publish");
-      if (label) {
-        authUrl.searchParams.set("state", Buffer.from(JSON.stringify({ label })).toString("base64url"));
-      }
+      authUrl.searchParams.set("state", Buffer.from(JSON.stringify({ label, redirectUri })).toString("base64url"));
 
       res.writeHead(302, { location: authUrl.toString(), "cache-control": "no-store" });
       res.end();
@@ -1357,16 +1355,21 @@ async function handleApi(req, res) {
         return;
       }
 
-      const { redirectUri } = threadsOAuthConfig();
       let label = "";
+      let stateRedirectUri = "";
       const state = requestUrl.searchParams.get("state");
       if (state) {
         try {
-          label = JSON.parse(Buffer.from(state, "base64url").toString("utf8")).label || "";
+          const statePayload = JSON.parse(Buffer.from(state, "base64url").toString("utf8"));
+          label = statePayload.label || "";
+          stateRedirectUri = statePayload.redirectUri || "";
         } catch {
           label = "";
+          stateRedirectUri = "";
         }
       }
+      const { redirectUri: configuredRedirectUri } = threadsOAuthConfig();
+      const redirectUri = stateRedirectUri || configuredRedirectUri;
       const token = await exchangeThreadsCode(code, redirectUri);
       const account = upsertRuntimeThreadsAccount({
         id: token.userId,
