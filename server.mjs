@@ -755,9 +755,10 @@ async function graphPost(path, params, token) {
       url.searchParams.set(key, String(value));
     }
   }
-  url.searchParams.set("access_token", token);
-
-  const response = await fetch(url, { method: "POST" });
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}` }
+  });
   const data = await response.json();
   if (!response.ok || data.error) {
     const message = data.error?.message || `Graph API request failed: ${response.status}`;
@@ -903,9 +904,9 @@ async function exchangeThreadsCode(code, redirectUri) {
 async function graphGet(path, fields, token) {
   const url = new URL(`https://graph.instagram.com/${graphVersion}/${path}`);
   url.searchParams.set("fields", fields);
-  url.searchParams.set("access_token", token);
-
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: { authorization: `Bearer ${token}` }
+  });
   const data = await response.json();
   if (!response.ok || data.error) {
     const message = data.error?.message || `Graph API request failed: ${response.status}`;
@@ -921,9 +922,10 @@ async function threadsPost(path, params, token) {
       url.searchParams.set(key, String(value));
     }
   }
-  url.searchParams.set("access_token", token);
-
-  const response = await fetch(url, { method: "POST" });
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { authorization: `Bearer ${token}` }
+  });
   const data = await response.json();
   if (!response.ok || data.error) {
     const message = data.error?.message || `Threads API request failed: ${response.status}`;
@@ -939,9 +941,9 @@ async function threadsGet(path, params, token) {
       url.searchParams.set(key, String(value));
     }
   }
-  url.searchParams.set("access_token", token);
-
-  const response = await fetch(url);
+  const response = await fetch(url, {
+    headers: { authorization: `Bearer ${token}` }
+  });
   const data = await response.json();
   if (!response.ok || data.error) {
     const message = data.error?.message || `Threads API request failed: ${response.status}`;
