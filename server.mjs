@@ -888,9 +888,10 @@ async function exchangeThreadsCode(code, redirectUri) {
   const longUrl = new URL("https://graph.threads.net/access_token");
   longUrl.searchParams.set("grant_type", "th_exchange_token");
   longUrl.searchParams.set("client_secret", appSecret);
-  longUrl.searchParams.set("access_token", shortToken.access_token);
 
-  const longResponse = await fetch(longUrl);
+  const longResponse = await fetch(longUrl, {
+    headers: { authorization: `Bearer ${shortToken.access_token}` }
+  });
   const longToken = await longResponse.json();
   if (!longResponse.ok || longToken.error) {
     const message = longToken.error?.message || `Threads long-lived token exchange failed: ${longResponse.status}`;
