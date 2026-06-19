@@ -1,0 +1,33 @@
+services:
+  - type: web
+    name: card-news-automation
+    env: node
+    plan: starter
+    buildCommand: npm install
+    startCommand: npm start
+    autoDeploy: false
+    envVars:
+      - key: PUBLIC_BASE_URL
+        value: https://card.92pong.com
+      - key: GRAPH_VERSION
+        value: v23.0
+      - key: FB_APP_ID
+        sync: false
+      - key: FB_APP_SECRET
+        sync: false
+      - key: FB_REDIRECT_URI
+        value: https://card.92pong.com/api/facebook/oauth/callback
+      - key: IG_APP_ID
+        sync: false
+      - key: IG_APP_SECRET
+        sync: false
+      - key: TOUR_API_KEY
+        sync: false
+      - key: IG_USER_ID
+        sync: false
+      - key: IG_ACCESS_TOKEN
+        sync: false
+      - key: FB_PAGE_ID
+        sync: false
+      - key: FB_PAGE_ACCESS_TOKEN
+        sync: false
