@@ -867,15 +867,17 @@ async function exchangeThreadsCode(code, redirectUri) {
     throw new Error("THREADS_APP_ID and THREADS_APP_SECRET are required for Threads OAuth.");
   }
 
-  const shortParams = new FormData();
-  shortParams.set("client_id", appId);
-  shortParams.set("client_secret", appSecret);
-  shortParams.set("grant_type", "authorization_code");
-  shortParams.set("redirect_uri", redirectUri);
-  shortParams.set("code", code);
+  const shortParams = new URLSearchParams({
+    client_id: appId,
+    client_secret: appSecret,
+    grant_type: "authorization_code",
+    redirect_uri: redirectUri,
+    code
+  });
 
   const shortResponse = await fetch("https://graph.threads.net/oauth/access_token", {
     method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
     body: shortParams
   });
   const shortToken = await shortResponse.json();
