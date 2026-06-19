@@ -1,0 +1,5 @@
+.env
+node_modules/
+_reference_open_carrusel/
+published/
+.tools/
