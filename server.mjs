@@ -21,6 +21,7 @@ const runtimeSocialSettings = {
   igAccessToken: "",
   threadsUserId: "",
   threadsAccessToken: "",
+  threadsAccounts: [],
   facebookPageId: "",
   facebookPageToken: "",
   publicBaseUrl: ""
@@ -88,6 +89,17 @@ function serializeEnv(values) {
 
 function runtimeOrEnv(runtimeValue, envKey) {
   return runtimeValue || process.env[envKey] || "";
+}
+
+function parseJsonEnv(envKey, fallback) {
+  const raw = process.env[envKey];
+  if (!raw) return fallback;
+  try {
+    const parsed = JSON.parse(raw);
+    return parsed ?? fallback;
+  } catch {
+    return fallback;
+  }
 }
 
 function loadLocalEnv() {
@@ -233,6 +245,74 @@ function threadsConfig() {
     userId: runtimeOrEnv(runtimeSocialSettings.threadsUserId, "THREADS_USER_ID"),
     accessToken: runtimeOrEnv(runtimeSocialSettings.threadsAccessToken, "THREADS_ACCESS_TOKEN")
   };
+}
+
+function normalizeThreadsAccount(account, index = 0) {
+  const userId = String(account?.userId || "").trim();
+  const accessToken = String(account?.accessToken || "").trim();
+  if (!userId || !accessToken) return null;
+  return {
+    id: String(account.id || userId),
+    label: String(account.label || account.username || `Threads ${index + 1}`).trim(),
+    username: String(account.username || "").trim(),
+    userId,
+    accessToken
+  };
+}
+
+function threadsAccounts() {
+  const accounts = [
+    ...runtimeSocialSettings.threadsAccounts,
+    ...parseJsonEnv("THREADS_ACCOUNTS", [])
+  ]
+    .map(normalizeThreadsAccount)
+    .filter(Boolean);
+
+  const single = threadsConfig();
+  if (single.userId && single.accessToken) {
+    accounts.push(normalizeThreadsAccount({
+      id: single.userId,
+      label: process.env.THREADS_ACCOUNT_LABEL || "Default Threads",
+      userId: single.userId,
+      accessToken: single.accessToken
+    }));
+  }
+
+  const seen = new Set();
+  return accounts.filter((account) => {
+    const key = account.id || account.userId;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function selectedThreadsConfig(accountId = "") {
+  const accounts = threadsAccounts();
+  if (!accounts.length) return threadsConfig();
+  return accounts.find((account) => account.id === accountId || account.userId === accountId) || accounts[0];
+}
+
+function upsertRuntimeThreadsAccount(account) {
+  const normalized = normalizeThreadsAccount(account, runtimeSocialSettings.threadsAccounts.length);
+  if (!normalized) return null;
+  const index = runtimeSocialSettings.threadsAccounts.findIndex((item) => item.id === normalized.id || item.userId === normalized.userId);
+  if (index >= 0) {
+    runtimeSocialSettings.threadsAccounts[index] = { ...runtimeSocialSettings.threadsAccounts[index], ...normalized };
+  } else {
+    runtimeSocialSettings.threadsAccounts.push(normalized);
+  }
+  return normalized;
+}
+
+function publicThreadsAccounts() {
+  return threadsAccounts().map((account) => ({
+    id: account.id,
+    label: account.label,
+    username: account.username,
+    userIdPreview: masked(account.userId),
+    tokenPreview: masked(account.accessToken)
+  }));
 }
 
 function facebookPageConfig() {
@@ -966,8 +1046,8 @@ async function publishCarousel({ imageUrls, caption }) {
   return { dryRun: false, childIds, carouselId: carousel.id, published };
 }
 
-async function publishThreadsCarousel({ imageUrls, caption }) {
-  const { userId: threadsUserId, accessToken } = threadsConfig();
+async function publishThreadsCarousel({ imageUrls, caption, threadsAccountId }) {
+  const { userId: threadsUserId, accessToken, label } = selectedThreadsConfig(threadsAccountId);
 
   if (!threadsUserId || !accessToken) {
     return {
@@ -988,7 +1068,7 @@ async function publishThreadsCarousel({ imageUrls, caption }) {
     const published = await threadsPost(`${threadsUserId}/threads_publish`, {
       creation_id: container.id
     }, accessToken);
-    return { dryRun: false, containerId: container.id, published };
+    return { dryRun: false, account: label || masked(threadsUserId), containerId: container.id, published };
   }
 
   const childIds = [];
@@ -1012,7 +1092,7 @@ async function publishThreadsCarousel({ imageUrls, caption }) {
     creation_id: carousel.id
   }, accessToken);
 
-  return { dryRun: false, childIds, carouselId: carousel.id, published };
+  return { dryRun: false, account: label || masked(threadsUserId), childIds, carouselId: carousel.id, published };
 }
 
 async function publishFacebookPagePost({ imageUrls, caption }) {
@@ -1085,7 +1165,7 @@ async function handleApi(req, res) {
       sendJson(res, 200, {
         graphVersion,
         hasInstagramConfig: Boolean(instagramConfig().userId && instagramConfig().accessToken),
-        hasThreadsConfig: Boolean(threadsConfig().userId && threadsConfig().accessToken),
+        hasThreadsConfig: Boolean(threadsAccounts().length),
         hasFacebookPageConfig: Boolean(facebookPageConfig().pageId && facebookPageConfig().accessToken),
         hasOpenAIConfig: Boolean(runtimeAiSettings.openaiKey || process.env.OPENAI_API_KEY),
         hasGeminiConfig: Boolean(runtimeAiSettings.geminiKey || process.env.GEMINI_API_KEY),
@@ -1098,6 +1178,7 @@ async function handleApi(req, res) {
     if (req.method === "GET" && req.url === "/api/social/settings") {
       const ig = instagramConfig();
       const threads = threadsConfig();
+      const accounts = publicThreadsAccounts();
       const facebookPage = facebookPageConfig();
       sendJson(res, 200, {
         publicBaseUrl: {
@@ -1113,11 +1194,12 @@ async function handleApi(req, res) {
           tokenSource: socialSource(runtimeSocialSettings.igAccessToken, "IG_ACCESS_TOKEN")
         },
         threads: {
-          configured: Boolean(threads.userId && threads.accessToken),
+          configured: Boolean(accounts.length || (threads.userId && threads.accessToken)),
           userIdPreview: masked(threads.userId),
           tokenPreview: masked(threads.accessToken),
           userIdSource: socialSource(runtimeSocialSettings.threadsUserId, "THREADS_USER_ID"),
-          tokenSource: socialSource(runtimeSocialSettings.threadsAccessToken, "THREADS_ACCESS_TOKEN")
+          tokenSource: socialSource(runtimeSocialSettings.threadsAccessToken, "THREADS_ACCESS_TOKEN"),
+          accounts
         },
         facebookPage: {
           configured: Boolean(facebookPage.pageId && facebookPage.accessToken),
@@ -1233,7 +1315,9 @@ async function handleApi(req, res) {
       return;
     }
 
-    if (req.method === "GET" && req.url === "/api/threads/oauth/start") {
+    if (req.method === "GET" && req.url?.startsWith("/api/threads/oauth/start")) {
+      const requestUrl = new URL(req.url, `http://${req.headers.host}`);
+      const label = String(requestUrl.searchParams.get("label") || "").trim();
       const { appId, appSecret, redirectUri } = threadsOAuthConfig();
       if (!publicBaseUrl()) {
         sendJson(res, 400, { error: "PUBLIC_BASE_URL is required before starting Threads OAuth." });
@@ -1249,6 +1333,9 @@ async function handleApi(req, res) {
       authUrl.searchParams.set("redirect_uri", redirectUri);
       authUrl.searchParams.set("response_type", "code");
       authUrl.searchParams.set("scope", "threads_basic,threads_content_publish");
+      if (label) {
+        authUrl.searchParams.set("state", Buffer.from(JSON.stringify({ label })).toString("base64url"));
+      }
 
       res.writeHead(302, { location: authUrl.toString(), "cache-control": "no-store" });
       res.end();
@@ -1269,15 +1356,28 @@ async function handleApi(req, res) {
       }
 
       const { redirectUri } = threadsOAuthConfig();
+      let label = "";
+      const state = requestUrl.searchParams.get("state");
+      if (state) {
+        try {
+          label = JSON.parse(Buffer.from(state, "base64url").toString("utf8")).label || "";
+        } catch {
+          label = "";
+        }
+      }
       const token = await exchangeThreadsCode(code, redirectUri);
-      runtimeSocialSettings.threadsUserId = token.userId;
-      runtimeSocialSettings.threadsAccessToken = token.accessToken;
+      const account = upsertRuntimeThreadsAccount({
+        id: token.userId,
+        label: label || token.username || "Threads account",
+        username: token.username,
+        userId: token.userId,
+        accessToken: token.accessToken
+      });
       await saveLocalEnv({
-        THREADS_USER_ID: token.userId,
-        THREADS_ACCESS_TOKEN: token.accessToken
+        THREADS_ACCOUNTS: JSON.stringify(threadsAccounts())
       });
 
-      sendHtml(res, 200, `<main style="font-family:system-ui;padding:40px;line-height:1.5"><h1>Threads connected</h1><p>${token.username} token has been saved. You can close this window and return to the card news app.</p><p>User ID: ${masked(token.userId)}</p></main>`);
+      sendHtml(res, 200, `<main style="font-family:system-ui;padding:40px;line-height:1.5"><h1>Threads connected</h1><p>${account.label} token has been saved. You can close this window and return to the card news app.</p><p>User ID: ${masked(token.userId)}</p></main>`);
       return;
     }
 
@@ -1288,10 +1388,11 @@ async function handleApi(req, res) {
         runtimeSocialSettings.igAccessToken = "";
         runtimeSocialSettings.threadsUserId = "";
         runtimeSocialSettings.threadsAccessToken = "";
+        runtimeSocialSettings.threadsAccounts = [];
         runtimeSocialSettings.facebookPageId = "";
         runtimeSocialSettings.facebookPageToken = "";
         runtimeSocialSettings.publicBaseUrl = "";
-        for (const key of ["PUBLIC_BASE_URL", "IG_USER_ID", "IG_ACCESS_TOKEN", "THREADS_USER_ID", "THREADS_ACCESS_TOKEN", "FB_PAGE_ID", "FB_PAGE_ACCESS_TOKEN"]) {
+        for (const key of ["PUBLIC_BASE_URL", "IG_USER_ID", "IG_ACCESS_TOKEN", "THREADS_USER_ID", "THREADS_ACCESS_TOKEN", "THREADS_ACCOUNTS", "FB_PAGE_ID", "FB_PAGE_ACCESS_TOKEN"]) {
           delete process.env[key];
         }
         await saveLocalEnv({
@@ -1300,6 +1401,7 @@ async function handleApi(req, res) {
           IG_ACCESS_TOKEN: "",
           THREADS_USER_ID: "",
           THREADS_ACCESS_TOKEN: "",
+          THREADS_ACCOUNTS: "",
           FB_PAGE_ID: "",
           FB_PAGE_ACCESS_TOKEN: ""
         });
@@ -1317,13 +1419,14 @@ async function handleApi(req, res) {
           runtimeSocialSettings.igAccessToken = body.igAccessToken.trim();
           updates.IG_ACCESS_TOKEN = runtimeSocialSettings.igAccessToken;
         }
-        if (typeof body.threadsUserId === "string" && body.threadsUserId.trim()) {
-          runtimeSocialSettings.threadsUserId = body.threadsUserId.trim();
-          updates.THREADS_USER_ID = runtimeSocialSettings.threadsUserId;
-        }
-        if (typeof body.threadsAccessToken === "string" && body.threadsAccessToken.trim()) {
-          runtimeSocialSettings.threadsAccessToken = body.threadsAccessToken.trim();
-          updates.THREADS_ACCESS_TOKEN = runtimeSocialSettings.threadsAccessToken;
+        if (typeof body.threadsUserId === "string" && body.threadsUserId.trim() && typeof body.threadsAccessToken === "string" && body.threadsAccessToken.trim()) {
+          upsertRuntimeThreadsAccount({
+            id: body.threadsUserId.trim(),
+            label: String(body.threadsLabel || "").trim() || "Manual Threads",
+            userId: body.threadsUserId.trim(),
+            accessToken: body.threadsAccessToken.trim()
+          });
+          updates.THREADS_ACCOUNTS = JSON.stringify(threadsAccounts());
         }
         if (typeof body.facebookPageId === "string" && body.facebookPageId.trim()) {
           runtimeSocialSettings.facebookPageId = body.facebookPageId.trim();
@@ -1338,7 +1441,7 @@ async function handleApi(req, res) {
       sendJson(res, 200, {
         ok: true,
         hasInstagramConfig: Boolean(instagramConfig().userId && instagramConfig().accessToken),
-        hasThreadsConfig: Boolean(threadsConfig().userId && threadsConfig().accessToken),
+        hasThreadsConfig: Boolean(threadsAccounts().length),
         hasFacebookPageConfig: Boolean(facebookPageConfig().pageId && facebookPageConfig().accessToken),
         hasPublicBaseUrl: Boolean(publicBaseUrl())
       });
@@ -1578,6 +1681,7 @@ async function handleApi(req, res) {
         ? body.imageUrls.map((url) => String(url).trim()).filter(Boolean)
         : [];
       const caption = String(body.caption || "").trim();
+      const threadsAccountId = String(body.threadsAccountId || "").trim();
 
       if (imageUrls.length > 10) {
         sendJson(res, 400, { error: "Threads publishing supports up to 10 card images in this app." });
@@ -1588,7 +1692,7 @@ async function handleApi(req, res) {
         return;
       }
 
-      const result = await publishThreadsCarousel({ imageUrls, caption });
+      const result = await publishThreadsCarousel({ imageUrls, caption, threadsAccountId });
       sendJson(res, 200, result);
       return;
     }
@@ -1620,6 +1724,7 @@ async function handleApi(req, res) {
         ? body.imageUrls.map((url) => String(url).trim()).filter(Boolean)
         : [];
       const caption = String(body.caption || "").trim();
+      const threadsAccountId = String(body.threadsAccountId || "").trim();
       const targets = Array.isArray(body.targets) && body.targets.length
         ? body.targets.map((target) => String(target))
         : ["instagram", "threads"];
@@ -1638,7 +1743,7 @@ async function handleApi(req, res) {
         }
       }
       if (targets.includes("threads")) {
-        result.threads = await publishThreadsCarousel({ imageUrls, caption });
+        result.threads = await publishThreadsCarousel({ imageUrls, caption, threadsAccountId });
       }
       if (targets.includes("facebook")) {
         result.facebook = await publishFacebookPagePost({ imageUrls, caption });
