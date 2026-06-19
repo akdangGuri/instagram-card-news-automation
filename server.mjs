@@ -866,36 +866,30 @@ async function exchangeThreadsCode(code, redirectUri) {
     throw new Error("THREADS_APP_ID and THREADS_APP_SECRET are required for Threads OAuth.");
   }
 
-  const shortParams = new URLSearchParams({
-    client_id: appId,
-    client_secret: appSecret,
-    grant_type: "authorization_code",
-    redirect_uri: redirectUri,
-    code
-  });
+  const shortUrl = new URL("https://graph.threads.net/oauth/access_token");
+  shortUrl.searchParams.set("client_id", appId);
+  shortUrl.searchParams.set("client_secret", appSecret);
+  shortUrl.searchParams.set("grant_type", "authorization_code");
+  shortUrl.searchParams.set("redirect_uri", redirectUri);
+  shortUrl.searchParams.set("code", code);
 
-  const shortResponse = await fetch("https://graph.threads.net/oauth/access_token", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: shortParams
-  });
+  const shortResponse = await fetch(shortUrl, { method: "POST" });
   const shortToken = await shortResponse.json();
   if (!shortResponse.ok || shortToken.error) {
     const message = shortToken.error?.message || `Threads OAuth failed: ${shortResponse.status}`;
-    throw new Error(message);
+    throw new Error(`Threads short token exchange failed: ${message}`);
   }
 
   const longUrl = new URL("https://graph.threads.net/access_token");
   longUrl.searchParams.set("grant_type", "th_exchange_token");
   longUrl.searchParams.set("client_secret", appSecret);
+  longUrl.searchParams.set("access_token", shortToken.access_token);
 
-  const longResponse = await fetch(longUrl, {
-    headers: { authorization: `Bearer ${shortToken.access_token}` }
-  });
+  const longResponse = await fetch(longUrl);
   const longToken = await longResponse.json();
   if (!longResponse.ok || longToken.error) {
     const message = longToken.error?.message || `Threads long-lived token exchange failed: ${longResponse.status}`;
-    throw new Error(message);
+    throw new Error(`Threads long token exchange failed: ${message}`);
   }
 
   const profile = await threadsGet("me", { fields: "id,username" }, longToken.access_token);
