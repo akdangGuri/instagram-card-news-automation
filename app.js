@@ -245,6 +245,38 @@ async function clearApiSettings() {
   await refreshApiStatus();
 }
 
+function renderThreadsAccounts(accounts = []) {
+  const select = $("#threadsAccountSelect");
+  const list = $("#threadsAccountList");
+  if (!select || !list) return;
+
+  select.innerHTML = "";
+
+  if (!accounts.length) {
+    const option = document.createElement("option");
+    option.value = "";
+    option.textContent = "Default Threads account";
+    select.appendChild(option);
+    list.textContent = "No Threads accounts connected.";
+    return;
+  }
+
+  accounts.forEach((account, index) => {
+    const label = account.label || account.username || account.userIdPreview || `Threads ${index + 1}`;
+    const option = document.createElement("option");
+    option.value = account.id || account.userIdPreview || "";
+    option.textContent = account.username ? `${label} (@${account.username})` : label;
+    select.appendChild(option);
+  });
+
+  list.textContent = accounts
+    .map((account, index) => {
+      const label = account.label || account.username || `Threads ${index + 1}`;
+      return `${label}: ${account.userIdPreview}`;
+    })
+    .join(" / ");
+}
+
 async function refreshSocialStatus() {
   const status = $("#socialStatus");
   try {
@@ -258,8 +290,12 @@ async function refreshSocialStatus() {
     if (data.instagram?.configured) {
       parts.push(`Instagram: ${data.instagram.userIdPreview} / ${data.instagram.tokenPreview}`);
     }
+    const threadsAccounts = data.threads?.accounts || [];
+    renderThreadsAccounts(threadsAccounts);
     if (data.threads?.configured) {
-      parts.push(`Threads: ${data.threads.userIdPreview} / ${data.threads.tokenPreview}`);
+      parts.push(threadsAccounts.length
+        ? `Threads: ${threadsAccounts.length} accounts`
+        : `Threads: ${data.threads.userIdPreview} / ${data.threads.tokenPreview}`);
     }
     if (data.facebookPage?.configured) {
       parts.push(`Facebook Page: ${data.facebookPage.pageIdPreview} / ${data.facebookPage.tokenPreview}`);
@@ -282,6 +318,7 @@ async function saveSocialSettings() {
       publicBaseUrl: $("#publicBaseUrl").value,
       igUserId: $("#igUserId").value,
       igAccessToken: $("#igAccessToken").value,
+      threadsLabel: $("#threadsLabel").value,
       threadsUserId: $("#threadsUserId").value,
       threadsAccessToken: $("#threadsAccessToken").value,
       facebookPageId: $("#facebookPageId").value,
@@ -294,6 +331,7 @@ async function saveSocialSettings() {
   }
   $("#igUserId").value = "";
   $("#igAccessToken").value = "";
+  $("#threadsLabel").value = "";
   $("#threadsUserId").value = "";
   $("#threadsAccessToken").value = "";
   $("#facebookPageId").value = "";
@@ -312,10 +350,12 @@ async function clearSocialSettings() {
   $("#publicBaseUrl").value = "";
   $("#igUserId").value = "";
   $("#igAccessToken").value = "";
+  $("#threadsLabel").value = "";
   $("#threadsUserId").value = "";
   $("#threadsAccessToken").value = "";
   $("#facebookPageId").value = "";
   $("#facebookPageToken").value = "";
+  renderThreadsAccounts([]);
   state.publishImageUrls = [];
   await refreshSocialStatus();
 }
@@ -977,7 +1017,8 @@ async function publishToTargets(targets) {
       body: JSON.stringify({
         targets,
         imageUrls,
-        caption: $("#caption").value.trim()
+        caption: $("#caption").value.trim(),
+        threadsAccountId: $("#threadsAccountSelect")?.value || ""
       })
     });
     const data = await response.json();
@@ -1017,7 +1058,8 @@ $("#connectFacebookPageBtn").addEventListener("click", () => {
   window.location.href = "/api/facebook/oauth/start";
 });
 $("#connectThreadsBtn").addEventListener("click", () => {
-  window.location.href = "/api/threads/oauth/start";
+  const label = $("#threadsLabel")?.value.trim();
+  window.location.href = `/api/threads/oauth/start${label ? `?label=${encodeURIComponent(label)}` : ""}`;
 });
 $("#publicBaseUrl").addEventListener("input", () => {
   state.publishImageUrls = [];
