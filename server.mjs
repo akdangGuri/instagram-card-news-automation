@@ -228,7 +228,8 @@ function facebookOAuthConfig() {
   return {
     appId: process.env.FB_APP_ID || "875028168403415",
     appSecret: process.env.FB_APP_SECRET || "",
-    redirectUri: `${publicBaseUrl()}/api/facebook/oauth/callback`
+    redirectUri: `${publicBaseUrl()}/api/facebook/oauth/callback`,
+    configId: process.env.FB_CONFIG_ID || ""
   };
 }
 
@@ -1265,7 +1266,7 @@ async function handleApi(req, res) {
     }
 
     if (req.method === "GET" && req.url === "/api/facebook/oauth/start") {
-      const { appId, appSecret, redirectUri } = facebookOAuthConfig();
+      const { appId, appSecret, redirectUri, configId } = facebookOAuthConfig();
       if (!publicBaseUrl()) {
         sendJson(res, 400, { error: "PUBLIC_BASE_URL is required before starting Facebook Page OAuth." });
         return;
@@ -1275,11 +1276,16 @@ async function handleApi(req, res) {
         return;
       }
 
-      const authUrl = new URL("https://www.facebook.com/dialog/oauth");
+      const authUrl = new URL(`https://www.facebook.com/${graphVersion}/dialog/oauth`);
       authUrl.searchParams.set("client_id", appId);
       authUrl.searchParams.set("redirect_uri", redirectUri);
       authUrl.searchParams.set("response_type", "code");
-      authUrl.searchParams.set("scope", "pages_show_list,pages_read_engagement,pages_manage_posts");
+      if (configId) {
+        authUrl.searchParams.set("config_id", configId);
+        authUrl.searchParams.set("override_default_response_type", "true");
+      } else {
+        authUrl.searchParams.set("scope", "pages_show_list,pages_read_engagement,pages_manage_posts");
+      }
 
       res.writeHead(302, { location: authUrl.toString(), "cache-control": "no-store" });
       res.end();
