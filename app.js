@@ -1016,6 +1016,9 @@ $("#clearSocialBtn").addEventListener("click", clearSocialSettings);
 $("#connectFacebookPageBtn").addEventListener("click", () => {
   window.location.href = "/api/facebook/oauth/start";
 });
+$("#connectThreadsBtn").addEventListener("click", () => {
+  window.location.href = "/api/threads/oauth/start";
+});
 $("#publicBaseUrl").addEventListener("input", () => {
   state.publishImageUrls = [];
 });
