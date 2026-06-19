@@ -867,7 +867,7 @@ async function exchangeThreadsCode(code, redirectUri) {
     throw new Error("THREADS_APP_ID and THREADS_APP_SECRET are required for Threads OAuth.");
   }
 
-  const shortUrl = new URL("https://graph.threads.net/oauth/access_token");
+  const shortUrl = new URL("https://graph.threads.net/v1.0/oauth/access_token");
   shortUrl.searchParams.set("client_id", appId);
   shortUrl.searchParams.set("client_secret", appSecret);
   shortUrl.searchParams.set("grant_type", "authorization_code");
@@ -881,7 +881,7 @@ async function exchangeThreadsCode(code, redirectUri) {
     throw new Error(`Threads short token exchange failed: ${message}`);
   }
 
-  const longUrl = new URL("https://graph.threads.net/access_token");
+  const longUrl = new URL("https://graph.threads.net/v1.0/access_token");
   longUrl.searchParams.set("grant_type", "th_exchange_token");
   longUrl.searchParams.set("client_secret", appSecret);
   longUrl.searchParams.set("access_token", shortToken.access_token);
