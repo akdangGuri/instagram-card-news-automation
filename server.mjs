@@ -57,6 +57,10 @@ function sendHtml(res, status, html) {
   res.end(html);
 }
 
+function safeJsonScript(value) {
+  return JSON.stringify(value).replace(/</g, "\\u003c");
+}
+
 async function readBody(req) {
   const chunks = [];
   for await (const chunk of req) chunks.push(chunk);
@@ -1329,7 +1333,33 @@ async function handleApi(req, res) {
         FB_PAGE_ACCESS_TOKEN: page.accessToken
       });
 
-      sendHtml(res, 200, `<main style="font-family:system-ui;padding:40px;line-height:1.5"><h1>Facebook 페이지 연결 완료</h1><p>${page.pageName} 페이지 토큰이 저장되었습니다. 카드뉴스 앱으로 돌아가도 됩니다.</p><p>페이지 ID: ${masked(page.pageId)}</p><p>찾은 페이지 수: ${page.pageCount}</p></main>`);
+      const payload = safeJsonScript({
+        facebookPageId: page.pageId,
+        facebookPageToken: page.accessToken
+      });
+      sendHtml(res, 200, `<main style="font-family:system-ui;padding:40px;line-height:1.5;max-width:720px"><h1>Facebook 페이지 연결 완료</h1><p>${page.pageName} 페이지 토큰을 저장하고 있습니다. 잠시 후 카드뉴스 앱으로 돌아가도 됩니다.</p><p>페이지 ID: ${masked(page.pageId)}</p><p>찾은 페이지 수: ${page.pageCount}</p><p id="save-state" style="font-weight:700">저장 확인 중...</p><script>
+const payload = ${payload};
+const state = document.getElementById("save-state");
+(async () => {
+  try {
+    const saveResponse = await fetch("/api/social/settings", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+    if (!saveResponse.ok) throw new Error("settings save failed");
+    const settingsResponse = await fetch("/api/social/settings", { cache: "no-store" });
+    const settings = await settingsResponse.json();
+    if (settings.facebookPage?.configured) {
+      state.textContent = "저장 완료: 이제 Facebook Page 발행을 사용할 수 있습니다.";
+    } else {
+      state.textContent = "저장 확인 실패: 앱 설정 화면에서 Facebook Page 상태를 다시 확인하세요.";
+    }
+  } catch (error) {
+    state.textContent = "저장 확인 실패: " + (error?.message || "알 수 없는 오류");
+  }
+})();
+</script></main>`);
       return;
     }
 
