@@ -1293,6 +1293,7 @@ async function handleApi(req, res) {
       authUrl.searchParams.set("redirect_uri", redirectUri);
       authUrl.searchParams.set("response_type", "code");
       authUrl.searchParams.set("scope", "pages_show_list,pages_read_engagement,pages_manage_posts");
+      authUrl.searchParams.set("auth_type", "rerequest");
       if (configId && process.env.FB_USE_BUSINESS_LOGIN_CONFIG === "true") {
         authUrl.searchParams.set("config_id", configId);
         authUrl.searchParams.set("override_default_response_type", "true");
