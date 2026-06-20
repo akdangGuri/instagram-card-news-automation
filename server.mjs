@@ -1297,12 +1297,13 @@ async function handleApi(req, res) {
       authUrl.searchParams.set("client_id", appId);
       authUrl.searchParams.set("redirect_uri", redirectUri);
       authUrl.searchParams.set("response_type", "code");
-      authUrl.searchParams.set("scope", "pages_show_list,pages_read_engagement,pages_manage_posts");
-      authUrl.searchParams.set("auth_type", "rerequest");
       authUrl.searchParams.set("state", randomUUID());
-      if (configId && process.env.FB_USE_BUSINESS_LOGIN_CONFIG === "true") {
+      if (configId && process.env.FB_USE_BUSINESS_LOGIN_CONFIG !== "false") {
         authUrl.searchParams.set("config_id", configId);
         authUrl.searchParams.set("override_default_response_type", "true");
+      } else {
+        authUrl.searchParams.set("scope", "pages_show_list,pages_read_engagement,pages_manage_posts");
+        authUrl.searchParams.set("auth_type", "rerequest");
       }
 
       res.writeHead(302, { location: authUrl.toString(), "cache-control": "no-store" });
