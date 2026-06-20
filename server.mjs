@@ -323,6 +323,10 @@ function facebookPageConfig() {
   };
 }
 
+function normalizePageName(value) {
+  return String(value || "").replace(/\s+/g, "").trim().toLowerCase();
+}
+
 function socialSource(runtimeValue, envKey) {
   if (runtimeValue) return "runtime";
   if (process.env[envKey]) return "environment";
@@ -849,9 +853,16 @@ async function exchangeFacebookCode(code, redirectUri) {
   }
 
   const pages = Array.isArray(accountsData.data) ? accountsData.data : [];
-  const page = pages.find((item) => item.access_token && (!item.tasks || item.tasks.includes("CREATE_CONTENT") || item.tasks.includes("MANAGE"))) || pages.find((item) => item.access_token);
+  const publishablePages = pages.filter((item) => item.access_token && (!item.tasks || item.tasks.includes("CREATE_CONTENT") || item.tasks.includes("MANAGE")));
+  const fallbackPages = pages.filter((item) => item.access_token);
+  const preferredPageName = process.env.FB_PAGE_NAME || process.env.FACEBOOK_PAGE_NAME || "오늘의 여행";
+  const preferred = normalizePageName(preferredPageName);
+  const page =
+    publishablePages.find((item) => normalizePageName(item.name) === preferred) ||
+    fallbackPages.find((item) => normalizePageName(item.name) === preferred);
   if (!page) {
-    throw new Error("연결 가능한 Facebook 페이지를 찾지 못했습니다. 페이지 관리자 권한과 pages_manage_posts 권한을 확인하세요.");
+    const foundNames = pages.map((item) => item.name).filter(Boolean).join(", ") || "없음";
+    throw new Error(`오늘의 여행 Facebook 페이지를 찾지 못했습니다. 로그인 계정이 해당 페이지 관리자/콘텐츠 권한을 갖고 있는지 확인하세요. 찾은 페이지: ${foundNames}`);
   }
 
   return {
