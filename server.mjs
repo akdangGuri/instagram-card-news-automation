@@ -24,6 +24,7 @@ const runtimeSocialSettings = {
   threadsAccounts: [],
   facebookPageId: "",
   facebookPageToken: "",
+  facebookLastOAuthCode: "",
   publicBaseUrl: ""
 };
 
@@ -1320,12 +1321,32 @@ async function handleApi(req, res) {
       const page = await exchangeFacebookCode(code, redirectUri);
       runtimeSocialSettings.facebookPageId = page.pageId;
       runtimeSocialSettings.facebookPageToken = page.accessToken;
+      runtimeSocialSettings.facebookLastOAuthCode = code;
       await saveLocalEnv({
         FB_PAGE_ID: page.pageId,
         FB_PAGE_ACCESS_TOKEN: page.accessToken
       });
 
       sendHtml(res, 200, `<main style="font-family:system-ui;padding:40px;line-height:1.5"><h1>Facebook 페이지 연결 완료</h1><p>${page.pageName} 페이지 토큰이 저장되었습니다. 카드뉴스 앱으로 돌아가도 됩니다.</p><p>페이지 ID: ${masked(page.pageId)}</p><p>찾은 페이지 수: ${page.pageCount}</p></main>`);
+      return;
+    }
+
+    if (req.method === "GET" && req.url?.startsWith("/api/facebook/env-export")) {
+      const requestUrl = new URL(req.url, `http://${req.headers.host}`);
+      const code = requestUrl.searchParams.get("code") || "";
+      if (!code || code !== runtimeSocialSettings.facebookLastOAuthCode) {
+        sendJson(res, 403, { error: "Invalid or expired Facebook export code." });
+        return;
+      }
+      const { pageId, accessToken } = facebookPageConfig();
+      if (!pageId || !accessToken) {
+        sendJson(res, 404, { error: "Facebook Page token is not configured in runtime." });
+        return;
+      }
+      sendJson(res, 200, {
+        FB_PAGE_ID: pageId,
+        FB_PAGE_ACCESS_TOKEN: accessToken
+      });
       return;
     }
 
