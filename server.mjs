@@ -1322,6 +1322,8 @@ async function handleApi(req, res) {
       runtimeSocialSettings.facebookPageId = page.pageId;
       runtimeSocialSettings.facebookPageToken = page.accessToken;
       runtimeSocialSettings.facebookLastOAuthCode = code;
+      process.env.FB_PAGE_ID = page.pageId;
+      process.env.FB_PAGE_ACCESS_TOKEN = page.accessToken;
       await saveLocalEnv({
         FB_PAGE_ID: page.pageId,
         FB_PAGE_ACCESS_TOKEN: page.accessToken
